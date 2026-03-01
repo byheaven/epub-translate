@@ -1,35 +1,37 @@
 # epub-translate
 
-将英文 EPUB 书籍翻译为**中英双语对照版本**的工具套件，基于 [oomol-lab/epub-translator](https://github.com/oomol-lab/epub-translator)。
+[中文文档](README.zh-CN.md)
 
-包含两种使用方式：
-- **CLI 脚本**：批量翻译 `input/` 目录下的 epub 文件
-- **Calibre 插件**：在 Calibre 书库中选中书籍直接翻译，翻译结果自动加入书库
+Translate English EPUB books into **bilingual side-by-side editions** (original + translated paragraphs interleaved), powered by [oomol-lab/epub-translator](https://github.com/oomol-lab/epub-translator).
 
-## 效果预览
+Two usage modes:
+- **CLI script** — batch-translate all EPUBs in `input/`, write results to `output/`
+- **Calibre plugin** — select books in your Calibre library and translate them in-place; the bilingual edition is added automatically
 
-翻译后为中英双语对照排版（英文段落下方紧跟中文翻译），封面与原书一致，书名自动更新为双语标题。
+## Output format
 
-## 支持的模型
+Each translated paragraph appears immediately below the original. The cover is preserved, and the book title is updated to include the translated title.
 
-任何兼容 OpenAI API 格式的模型均可使用：
+## Supported models
 
-| 模型 | url | model | 大致成本/本 |
-|------|-----|-------|------------|
+Any OpenAI-compatible API endpoint works:
+
+| Model | url | model | Approx. cost/book |
+|-------|-----|-------|-------------------|
 | DeepSeek V3 | `https://api.deepseek.com` | `deepseek-chat` | ¥0.5–3 |
 | OpenAI GPT-4o | `https://api.openai.com/v1` | `gpt-4o` | $1–5 |
 | OpenAI GPT-4o-mini | `https://api.openai.com/v1` | `gpt-4o-mini` | $0.2–1 |
-| Azure OpenAI | `https://<resource>.openai.azure.com/openai/deployments/<model>/chat/completions?api-version=2024-02-01` | deployment 名称 | 按用量 |
-| 硅基流动 | `https://api.siliconflow.cn/v1` | `deepseek-ai/DeepSeek-V3` | ¥0.3–1 |
-| 阿里通义 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` | ¥0.5–2 |
+| Azure OpenAI | `https://<resource>.openai.azure.com/openai/deployments/<model>/chat/completions?api-version=2024-02-01` | deployment name | metered |
+| SiliconFlow | `https://api.siliconflow.cn/v1` | `deepseek-ai/DeepSeek-V3` | ¥0.3–1 |
+| Alibaba Qwen | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` | ¥0.5–2 |
 
 ---
 
-## 方式一：CLI 脚本
+## Option 1: CLI script
 
-### 安装
+### Install
 
-需要 Python 3.12+。
+Requires Python 3.12+.
 
 ```bash
 git clone https://github.com/byheaven/epub-translate.git
@@ -39,12 +41,11 @@ source .venv/bin/activate
 pip install epub-translator tqdm
 ```
 
-### 配置
-
-复制并编辑 `config.example.json`：
+### Configure
 
 ```bash
 cp config.example.json config.json
+# edit config.json and set your API key
 ```
 
 ```json
@@ -66,36 +67,34 @@ cp config.example.json config.json
 }
 ```
 
-**`target_language` 可选值：** `SIMPLIFIED_CHINESE` `TRADITIONAL_CHINESE` `JAPANESE` `KOREAN` `FRENCH` `GERMAN` `SPANISH` `RUSSIAN` `PORTUGUESE` `ENGLISH`
+**`target_language` values:** `SIMPLIFIED_CHINESE` `TRADITIONAL_CHINESE` `JAPANESE` `KOREAN` `FRENCH` `GERMAN` `SPANISH` `RUSSIAN` `PORTUGUESE` `ENGLISH`
 
-### 使用
+### Run
 
 ```bash
-# 将 epub 文件放入 input/
 cp ~/Downloads/book.epub input/
 
-# 运行翻译
 source .venv/bin/activate
 python translate_books.py
 
-# 结果在 output/
+# results in output/
 ```
 
-翻译中断后重新运行会自动从缓存断点续翻，无需从头开始。
+If interrupted, re-running resumes from the cache automatically — no work is lost.
 
 ---
 
-## 方式二：Calibre 插件
+## Option 2: Calibre plugin
 
-在 Calibre 书库中直接选中书籍翻译，支持批量操作，翻译结果自动加入书库。
+Translate books directly from your Calibre library. The bilingual edition is added as a new entry (original is untouched).
 
-### 安装
+### Install
 
-**前提：** 已完成 CLI 方式的安装步骤（需要 `.venv` 和 `config.json`）。
+**Prerequisite:** complete the CLI install steps above (`.venv` and `config.json` must exist).
 
-**下载插件：**
+**Download the plugin:**
 
-从 [Releases](https://github.com/byheaven/epub-translate/releases) 下载最新的 `EpubTranslate.zip`，或自行打包：
+Download `EpubTranslate.zip` from [Releases](https://github.com/byheaven/epub-translate/releases), or build it yourself:
 
 ```bash
 cd calibre-plugin
@@ -103,7 +102,7 @@ zip -r ../EpubTranslate.zip . --exclude '*.DS_Store'
 cd ..
 ```
 
-**安装到 Calibre：**
+**Install into Calibre:**
 
 ```bash
 # macOS
@@ -113,63 +112,63 @@ cd ..
 calibre-customize -a EpubTranslate.zip
 ```
 
-重启 Calibre，在 **Preferences → Toolbars & Menus** 中将 **Epub Translate** 添加到工具栏。
+Restart Calibre, then go to **Preferences → Toolbars & Menus** and add **Epub Translate** to the toolbar.
 
-### 使用
+### Use
 
-1. 在 Calibre 书库中选中一本或多本含 EPUB 格式的书
-2. 点击工具栏的**翻译 EPUB**按钮
-3. 确认后开始翻译，进度实时显示
-4. 翻译完成后双语版自动加入书库（原书不受影响）
+1. Select one or more books with EPUB format in your library
+2. Click the **Translate EPUB** toolbar button
+3. Confirm and watch the progress dialog
+4. The bilingual edition appears in the library when done
 
-### 插件配置
+### Plugin settings
 
-点击 **翻译 EPUB → 设置** 可配置：
-- `epub-translate` 项目路径（插件据此找到 `.venv` 和 `config.json`）
-- 目标语言、并发数、自定义提示词
-- 也可直接编辑项目目录下的 `config.json`
+Click **Translate EPUB → Settings** to configure:
+- Path to the `epub-translate` project directory (used to locate `.venv` and `config.json`)
+- Target language, concurrency, custom prompt
+- Or edit `config.json` in the project directory directly
 
 ---
 
-## 文件结构
+## Repository layout
 
 ```
 epub-translate/
-├── translate_books.py       # CLI 批量翻译脚本
-├── translate_worker.py      # Calibre 插件调用的翻译 worker（JSON 行协议）
-├── config.example.json      # 配置示例
-├── calibre-plugin/          # Calibre 插件源码
-│   ├── __init__.py          # 插件注册
-│   ├── ui.py                # 工具栏按钮、进度对话框
-│   ├── worker.py            # QThread 封装子进程
-│   ├── config.py            # 插件配置面板
-│   └── images/icon.png      # 工具栏图标
-├── input/                   # 待翻译的 epub（CLI 用）
-├── output/                  # 翻译结果（CLI 用）
-└── cache/                   # 翻译缓存（断点续翻）
+├── translate_books.py       # CLI batch translation script
+├── translate_worker.py      # Worker invoked by the Calibre plugin (JSON-line protocol)
+├── config.example.json      # Configuration template
+├── calibre-plugin/          # Calibre plugin source
+│   ├── __init__.py          # Plugin registration
+│   ├── ui.py                # Toolbar button and progress dialog
+│   ├── worker.py            # QThread wrapping subprocess
+│   ├── config.py            # Plugin settings panel
+│   └── images/icon.png      # Toolbar icon
+├── input/                   # Drop EPUBs here (CLI)
+├── output/                  # Translated output (CLI)
+└── cache/                   # Translation cache (enables resume)
 ```
 
-## 工作原理
+## How it works
 
-### CLI 脚本
+### CLI
 
-直接调用 `epub-translator` 库，对 `input/` 中的每本书调用 `translate()` 函数，以 `APPEND_BLOCK` 模式输出双语 epub。
+Calls `epub_translator.translate()` on each file in `input/` using `SubmitKind.APPEND_BLOCK`, which interleaves original and translated paragraphs in the output EPUB.
 
-### Calibre 插件
+### Calibre plugin
 
-插件运行于 Calibre 内置 Python 环境，无法直接 import `epub-translator`（依赖 openai/tiktoken 等）。因此采用**子进程方案**：
+The plugin runs inside Calibre's embedded Python and cannot import `epub-translator` (which depends on `openai`, `tiktoken`, etc.). Instead it spawns a subprocess:
 
 ```
-Calibre 插件 (Qt/Python 3.14)
+Calibre plugin (Qt / Python 3.14)
   │  subprocess.Popen
   ▼
-translate_worker.py (.venv/bin/python)
-  │  stdout: JSON 行协议 {"type":"progress","value":0.45}
+translate_worker.py  (.venv/bin/python)
+  │  stdout: JSON-line protocol  {"type":"progress","value":0.45}
   ▼
-epub_translator 库（实际翻译）
+epub_translator library
 ```
 
-进度通过 JSON 行实时回传，插件解析后更新 Qt 进度条。
+Progress is streamed back as JSON lines and displayed in a Qt progress bar.
 
 ## License
 
