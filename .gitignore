@@ -1,0 +1,25 @@
+# 虚拟环境
+.venv/
+
+# 翻译缓存和日志（体积大，且含 API 调用细节）
+cache/
+logs/
+
+# 工作目录
+input/
+output/
+
+# 打包产物（用户自行打包）
+EpubTranslate.zip
+
+# 配置文件（含 API key，不入库）
+config.json
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo

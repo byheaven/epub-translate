@@ -1,0 +1,16 @@
+{
+  "llm": {
+    "key": "YOUR_API_KEY_HERE",
+    "url": "https://api.deepseek.com",
+    "model": "deepseek-chat",
+    "token_encoding": "o200k_base",
+    "timeout": 120.0,
+    "top_p": 0.6,
+    "temperature": 0.85,
+    "retry_times": 5,
+    "retry_interval_seconds": 6.0
+  },
+  "target_language": "SIMPLIFIED_CHINESE",
+  "concurrency": 3,
+  "user_prompt": ""
+}
