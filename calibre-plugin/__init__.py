@@ -3,7 +3,7 @@ from calibre.customize import InterfaceActionBase
 
 class EpubTranslatePlugin(InterfaceActionBase):
     name = "Epub Translate"
-    description = "将选中的 EPUB 书籍翻译为双语版本并添加到书库"
+    description = "Translate selected EPUB books into bilingual editions and add them to the library"
     supported_platforms = ["osx", "windows", "linux"]
     author = "yubai"
     version = (1, 0, 0)

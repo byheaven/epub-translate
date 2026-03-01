@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
 ## What This Project Does
 
@@ -18,18 +18,33 @@ There is no build step, no test suite. The script uses a shebang pointing to `.v
 1. Edit `config.json` with your API key and model settings
 2. Place `.epub` files in `input/`
 3. Run the script — output goes to `output/` as `{stem}_bilingual.epub`
-4. Translation caches are stored in `cache/` for resumability (interrupted jobs can be restarted)
+4. Translation caches are stored in `cache/` for resumability
 
 ## Architecture
 
-The entire application is `translate_books.py` (~164 lines). Key functions:
-
-- `main()` — entry point: loads config, discovers EPUBs in `input/`, iterates and calls `translate_one()`
-- `translate_one()` — handles one book: checks if output already exists (skip), calls `epub_translator.translate()` with a tqdm progress bar
-- `build_llm()` — constructs an `LLM` object from config for the `epub-translator` library
+CLI application is `translate_books.py`. Key functions:
+- `main()` — loads config, discovers EPUBs in `input/`, calls `translate_one()`
+- `translate_one()` — skips if output exists, calls `epub_translator.translate()`
+- `build_llm()` — constructs `LLM` object from config
 - `load_config()` — reads `config.json`
 
-The `epub_translator` library handles all actual translation logic, chunking, and caching. This codebase does not implement any translation logic directly.
+## Calibre Plugin
+
+The `calibre-plugin/` directory contains a Calibre InterfaceAction plugin.
+
+**Architecture:** The plugin runs inside Calibre's embedded Python and cannot import `epub-translator` directly. It spawns `translate_worker.py` as a subprocess and communicates via JSON lines on stdout.
+
+Key files:
+- `calibre-plugin/ui.py` — toolbar button, progress dialog, library integration
+- `calibre-plugin/worker.py` — `QThread` wrapping `subprocess.Popen`
+- `calibre-plugin/config.py` — plugin settings panel (JSONConfig)
+- `translate_worker.py` — standalone worker script invoked by the plugin
+
+**Packaging:**
+```bash
+cd calibre-plugin && zip -r ../EpubTranslate.zip . --exclude '*.DS_Store'
+/Applications/calibre.app/Contents/MacOS/calibre-customize -a ../EpubTranslate.zip
+```
 
 ## Configuration (`config.json`)
 
@@ -54,10 +69,10 @@ The `epub_translator` library handles all actual translation logic, chunking, an
 
 **Supported `target_language` values:** `SIMPLIFIED_CHINESE`, `TRADITIONAL_CHINESE`, `ENGLISH`, `JAPANESE`, `KOREAN`, `FRENCH`, `GERMAN`, `SPANISH`, `RUSSIAN`, `PORTUGUESE`
 
-The LLM `url` field must be an OpenAI-compatible API endpoint. Any provider with such an API works (DeepSeek, OpenAI, Anthropic via compatible proxy, SiliconFlow, Alibaba Qwen, etc.).
+Azure OpenAI is auto-detected by `.openai.azure.com` in the URL and uses the `AzureOpenAI` client.
 
 ## Dependencies
 
-- Python 3.12 at `/opt/homebrew/bin/python3.12`
-- `epub-translator` (OOMOL Lab) — the core translation library
+- Python 3.12+ in `.venv/`
+- `epub-translator` (OOMOL Lab) — core translation library
 - `tqdm` — progress bar display

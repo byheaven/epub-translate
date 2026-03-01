@@ -1,32 +1,31 @@
 """
-worker.py — QThread 封装子进程调用 translate_worker.py
+worker.py - QThread wrapper around the translate_worker.py subprocess.
 
-信号：
-  progress_changed(float)           — 当前书的翻译进度 0.0~1.0
-  status_changed(str)               — 状态文本更新
-  book_finished(int, bool, str)     — (book_id, success, message)
-  all_finished()                    — 所有书翻译完毕
+Signals:
+  progress_changed(float)        - overall translation progress 0.0~1.0
+  status_changed(str)            - status text update
+  book_finished(int, bool, str)  - (book_id, success, message)
+  all_finished()                 - all books have been processed
 """
 
 import json
 import os
 import subprocess
-import tempfile
 from pathlib import Path
 
 from qt.core import QThread, pyqtSignal
 
 
 class TranslationWorker(QThread):
-    progress_changed = pyqtSignal(float)   # 整体进度 0.0~1.0
-    status_changed = pyqtSignal(str)       # 状态文本
-    book_finished = pyqtSignal(int, bool, str)  # book_id, success, msg
+    progress_changed = pyqtSignal(float)          # overall progress 0.0~1.0
+    status_changed = pyqtSignal(str)              # status text
+    book_finished = pyqtSignal(int, bool, str)    # book_id, success, message
     all_finished = pyqtSignal()
 
     def __init__(self, tasks: list[tuple[int, str, str]], project_path: str, parent=None):
         """
         tasks: [(book_id, source_epub_path, target_epub_path), ...]
-        project_path: epub-translate 项目根目录（含 .venv 和 config.json）
+        project_path: root directory of the epub-translate project (contains .venv and config.json)
         """
         super().__init__(parent)
         self.tasks = tasks
@@ -50,7 +49,7 @@ class TranslationWorker(QThread):
                 break
 
             book_name = Path(source_path).stem
-            self.status_changed.emit(f"正在翻译第 {idx + 1}/{total} 本：{book_name}")
+            self.status_changed.emit(f"Translating book {idx + 1}/{total}: {book_name}")
 
             cmd = [
                 str(python_exe),
@@ -70,7 +69,7 @@ class TranslationWorker(QThread):
                     env={**os.environ, "PYTHONUNBUFFERED": "1"},
                 )
             except FileNotFoundError as e:
-                self.book_finished.emit(book_id, False, f"无法启动 worker: {e}")
+                self.book_finished.emit(book_id, False, f"Failed to start worker: {e}")
                 continue
 
             book_progress = 0.0
@@ -90,13 +89,13 @@ class TranslationWorker(QThread):
 
                 if msg_type == "progress":
                     book_progress = float(msg.get("value", 0.0))
-                    # 整体进度 = (已完成书数 + 当前书进度) / 总书数
+                    # overall = (completed books + current book progress) / total books
                     overall = (idx + book_progress) / total
                     self.progress_changed.emit(overall)
 
                 elif msg_type == "error":
                     if msg.get("critical"):
-                        error_msg = msg.get("message", "未知错误")
+                        error_msg = msg.get("message", "Unknown error")
 
                 elif msg_type == "done":
                     success = bool(msg.get("success"))
@@ -106,19 +105,19 @@ class TranslationWorker(QThread):
                     out_tok = msg.get("output_tokens", 0)
                     cached = msg.get("cached_tokens", 0)
                     self.status_changed.emit(
-                        f"完成：{book_name}  "
-                        f"Token 输入 {in_tok:,}（缓存 {cached:,}）/ 输出 {out_tok:,}"
+                        f"Done: {book_name}  "
+                        f"Tokens in {in_tok:,} (cached {cached:,}) / out {out_tok:,}"
                     )
 
             self._proc.wait()
 
             if not success and not error_msg:
                 stderr = self._proc.stderr.read()
-                error_msg = stderr.strip()[:200] if stderr.strip() else "子进程异常退出"
+                error_msg = stderr.strip()[:200] if stderr.strip() else "Subprocess exited unexpectedly"
 
             self.book_finished.emit(book_id, success, error_msg)
 
-            # 更新整体进度到该书完成
+            # mark this book as fully complete in the overall progress bar
             self.progress_changed.emit((idx + 1) / total)
 
         self.all_finished.emit()

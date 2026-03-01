@@ -1,14 +1,14 @@
 #!/Users/yubai/epub-translate/.venv/bin/python
 """
-translate_worker.py — Calibre 插件调用的翻译 worker
+translate_worker.py - Translation worker invoked by the Calibre plugin.
 
-用法:
-  .venv/bin/python translate_worker.py \
-    --source /path/to/book.epub \
-    --target /tmp/book-bilingual.epub \
-    --config /Users/yubai/epub-translate/config.json
+Usage:
+  .venv/bin/python translate_worker.py \\
+    --source /path/to/book.epub \\
+    --target /tmp/book-bilingual.epub \\
+    --config /path/to/config.json
 
-stdout 输出协议（每行一个 JSON）：
+stdout protocol (one JSON object per line):
   {"type": "progress", "value": 0.45}
   {"type": "error", "message": "retry 1: ...", "critical": false}
   {"type": "stats", "input_tokens": 58524, "output_tokens": 18913, "cached_tokens": 2816}
@@ -40,7 +40,7 @@ LANGUAGE_MAP = {
 
 
 def emit(obj: dict) -> None:
-    """向 stdout 输出一行 JSON，立即刷新。"""
+    """Write a single JSON line to stdout and flush immediately."""
     print(json.dumps(obj, ensure_ascii=False), flush=True)
 
 
@@ -63,7 +63,7 @@ def build_llm(config: dict, base_dir: Path) -> LLM:
         cache_path=cache_dir,
         log_dir_path=log_dir,
     )
-    # Azure OpenAI 需要专用客户端
+    # Azure OpenAI requires a dedicated client; detect by URL
     if ".openai.azure.com" in c["url"]:
         from openai import AzureOpenAI
         parsed = urlparse(c["url"])
@@ -79,10 +79,10 @@ def build_llm(config: dict, base_dir: Path) -> LLM:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="EPUB 翻译 worker（供 Calibre 插件调用）")
-    parser.add_argument("--source", required=True, help="源 EPUB 路径")
-    parser.add_argument("--target", required=True, help="输出 EPUB 路径")
-    parser.add_argument("--config", required=True, help="config.json 路径")
+    parser = argparse.ArgumentParser(description="EPUB translation worker (called by the Calibre plugin)")
+    parser.add_argument("--source", required=True, help="Source EPUB path")
+    parser.add_argument("--target", required=True, help="Output EPUB path")
+    parser.add_argument("--config", required=True, help="Path to config.json")
     args = parser.parse_args()
 
     source_path = Path(args.source)
@@ -91,12 +91,12 @@ def main():
     base_dir = config_path.parent
 
     if not source_path.exists():
-        emit({"type": "error", "message": f"源文件不存在: {source_path}", "critical": True})
+        emit({"type": "error", "message": f"Source file not found: {source_path}", "critical": True})
         emit({"type": "done", "success": False})
         sys.exit(1)
 
     if not config_path.exists():
-        emit({"type": "error", "message": f"配置文件不存在: {config_path}", "critical": True})
+        emit({"type": "error", "message": f"Config file not found: {config_path}", "critical": True})
         emit({"type": "done", "success": False})
         sys.exit(1)
 
@@ -111,7 +111,7 @@ def main():
     try:
         llm = build_llm(config, base_dir)
     except Exception as e:
-        emit({"type": "error", "message": f"初始化 LLM 失败: {e}", "critical": True})
+        emit({"type": "error", "message": f"Failed to initialize LLM: {e}", "critical": True})
         emit({"type": "done", "success": False})
         sys.exit(1)
 
@@ -119,7 +119,7 @@ def main():
 
     def on_progress(progress: float) -> None:
         nonlocal last_progress
-        # 只在进度变化超过 1% 时才输出，减少 IPC 开销
+        # Emit only when progress changes by at least 1% to reduce IPC overhead
         if progress - last_progress >= 0.01 or progress >= 1.0:
             emit({"type": "progress", "value": round(progress, 4)})
             last_progress = progress
@@ -153,7 +153,7 @@ def main():
         emit({"type": "done", "success": True})
 
     except KeyboardInterrupt:
-        emit({"type": "error", "message": "翻译被用户取消", "critical": True})
+        emit({"type": "error", "message": "Translation cancelled by user", "critical": True})
         emit({"type": "done", "success": False})
         sys.exit(0)
 
