@@ -21,8 +21,59 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
+import openai
 from epub_translator import LLM, translate, SubmitKind, FillFailedEvent
 from epub_translator.translation import language as Lang
+
+
+# ---------------------------------------------------------------------------
+# Azure content-filter error handling
+# ---------------------------------------------------------------------------
+
+def _is_content_filter_error(err: Exception) -> bool:
+    """Return True if err is an Azure OpenAI content-filter (policy) rejection."""
+    if not isinstance(err, openai.BadRequestError):
+        return False
+    body = getattr(err, 'body', None)
+    if isinstance(body, dict):
+        error_info = body.get('error', body)
+        if isinstance(error_info, dict):
+            if error_info.get('code') == 'content_filter':
+                return True
+            inner = error_info.get('innererror', {})
+            if isinstance(inner, dict) and inner.get('code') == 'ResponsibleAIPolicyViolation':
+                return True
+    return 'content_filter' in str(err) or 'content management policy' in str(err)
+
+
+_content_filter_skip_cb = None
+
+
+def _install_content_filter_skip() -> None:
+    """One-time monkey-patch of XMLTranslator to skip content-filtered segments."""
+    from epub_translator.xml_translator.translator import XMLTranslator
+    if getattr(XMLTranslator._translate_inline_segments, '_content_filter_patched', False):
+        return
+    original = XMLTranslator._translate_inline_segments
+
+    def patched(self, inline_segments, callbacks):
+        try:
+            return original(self, inline_segments, callbacks)
+        except Exception as e:
+            if _is_content_filter_error(e):
+                preview = ""
+                for seg in inline_segments[:1]:
+                    for ts in seg:
+                        preview += ts.text
+                        if len(preview) >= 80:
+                            break
+                if _content_filter_skip_cb is not None:
+                    _content_filter_skip_cb(preview[:80])
+                return [None] * len(inline_segments)
+            raise
+
+    patched._content_filter_patched = True
+    XMLTranslator._translate_inline_segments = patched
 
 
 LANGUAGE_MAP = {
@@ -114,6 +165,19 @@ def main():
         emit({"type": "error", "message": f"Failed to initialize LLM: {e}", "critical": True})
         emit({"type": "done", "success": False})
         sys.exit(1)
+
+    _install_content_filter_skip()
+
+    global _content_filter_skip_cb
+
+    def on_content_skip(preview: str) -> None:
+        emit({
+            "type": "error",
+            "message": f"Content filtered (segment skipped): {preview!r}",
+            "critical": False,
+        })
+
+    _content_filter_skip_cb = on_content_skip
 
     last_progress = 0.0
 

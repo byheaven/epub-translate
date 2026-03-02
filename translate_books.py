@@ -15,9 +15,61 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
+import openai
 from tqdm import tqdm
 from epub_translator import LLM, translate, SubmitKind, FillFailedEvent
 from epub_translator.translation import language as Lang
+
+
+# ---------------------------------------------------------------------------
+# Azure content-filter error handling
+# ---------------------------------------------------------------------------
+
+def _is_content_filter_error(err: Exception) -> bool:
+    """Return True if err is an Azure OpenAI content-filter (policy) rejection."""
+    if not isinstance(err, openai.BadRequestError):
+        return False
+    body = getattr(err, 'body', None)
+    if isinstance(body, dict):
+        error_info = body.get('error', body)
+        if isinstance(error_info, dict):
+            if error_info.get('code') == 'content_filter':
+                return True
+            inner = error_info.get('innererror', {})
+            if isinstance(inner, dict) and inner.get('code') == 'ResponsibleAIPolicyViolation':
+                return True
+    return 'content_filter' in str(err) or 'content management policy' in str(err)
+
+
+# Holds the per-book skip callback; swapped by translate_one() before each book.
+_content_filter_skip_cb = None
+
+
+def _install_content_filter_skip() -> None:
+    """One-time monkey-patch of XMLTranslator to skip content-filtered segments."""
+    from epub_translator.xml_translator.translator import XMLTranslator
+    if getattr(XMLTranslator._translate_inline_segments, '_content_filter_patched', False):
+        return
+    original = XMLTranslator._translate_inline_segments
+
+    def patched(self, inline_segments, callbacks):
+        try:
+            return original(self, inline_segments, callbacks)
+        except Exception as e:
+            if _is_content_filter_error(e):
+                preview = ""
+                for seg in inline_segments[:1]:
+                    for ts in seg:
+                        preview += ts.text
+                        if len(preview) >= 80:
+                            break
+                if _content_filter_skip_cb is not None:
+                    _content_filter_skip_cb(preview[:80])
+                return [None] * len(inline_segments)
+            raise
+
+    patched._content_filter_patched = True
+    XMLTranslator._translate_inline_segments = patched
 
 # === Paths ===
 BASE_DIR = Path(__file__).parent
@@ -103,9 +155,18 @@ def translate_one(llm: LLM, epub_path: Path, config: dict) -> bool:
     print(f"  Language:    {target_lang}")
     print(f"  Concurrency: {concurrency}")
 
-    fill_errors, critical_errors = 0, 0
+    fill_errors, critical_errors, skipped_segments = 0, 0, 0
 
     try:
+        global _content_filter_skip_cb
+
+        def on_content_skip(preview: str) -> None:
+            nonlocal skipped_segments
+            skipped_segments += 1
+            tqdm.write(f"  Content filtered (skipped): {preview!r}")
+
+        _content_filter_skip_cb = on_content_skip
+
         with tqdm(
             total=100,
             desc="  Progress",
@@ -145,6 +206,8 @@ def translate_one(llm: LLM, epub_path: Path, config: dict) -> bool:
         cached = llm.input_cache_tokens
         print(f"Done: {output_path.name}")
         print(f"  Tokens: in {tokens_in:,} (cache hit {cached:,}) / out {tokens_out:,}")
+        if skipped_segments:
+            print(f"  Skipped: {skipped_segments} content-filtered segment(s) (kept in original language)")
         if critical_errors:
             print(f"  Warning: {critical_errors} critical error(s), output may be incomplete")
         return True
@@ -156,6 +219,8 @@ def translate_one(llm: LLM, epub_path: Path, config: dict) -> bool:
         print(f"Failed: {epub_path.name}")
         print(f"  Error: {e}")
         return False
+    finally:
+        _content_filter_skip_cb = None
 
 
 def main():
@@ -183,6 +248,7 @@ def main():
         print(f"  {i}. {f.name} ({size_mb:.1f} MB)")
 
     llm = build_llm(config)
+    _install_content_filter_skip()
 
     success, failed = 0, 0
     for epub_path in epub_files:

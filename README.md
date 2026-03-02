@@ -90,13 +90,12 @@ Translate books directly from your Calibre library. The bilingual edition is add
 
 ### Install
 
-**Prerequisite:** complete the CLI install steps above (`.venv` and `config.json` must exist).
-
 **Download the plugin:**
 
 Download `EpubTranslate.zip` from [Releases](https://github.com/byheaven/epub-translate/releases), or build it yourself:
 
 ```bash
+cp translate_worker.py calibre-plugin/
 cd calibre-plugin
 zip -r ../EpubTranslate.zip . --exclude '*.DS_Store'
 cd ..
@@ -118,15 +117,17 @@ Restart Calibre, then go to **Preferences → Toolbars & Menus** and add **Epub 
 
 1. Select one or more books with EPUB format in your library
 2. Click the **Translate EPUB** toolbar button
-3. Confirm and watch the progress dialog
-4. The bilingual edition appears in the library when done
+3. On first use, the plugin automatically installs `epub-translator` into a managed Python environment — this takes about a minute and only happens once
+4. Confirm and watch the progress dialog
+5. The bilingual edition appears in the library when done
 
 ### Plugin settings
 
 Click **Translate EPUB → Settings** to configure:
-- Path to the `epub-translate` project directory (used to locate `.venv` and `config.json`)
-- Target language, concurrency, custom prompt
-- Or edit `config.json` in the project directory directly
+
+- **API Settings** — API key, URL, and model (the only required fields)
+- **Translation Settings** — target language, concurrency, custom prompt
+- **Advanced** — shows the auto-detected Python path; **Reinstall** button recreates the environment if needed; optional manual Python override
 
 ---
 
@@ -156,19 +157,20 @@ Calls `epub_translator.translate()` on each file in `input/` using `SubmitKind.A
 
 ### Calibre plugin
 
-The plugin runs inside Calibre's embedded Python and cannot import `epub-translator` (which depends on `openai`, `tiktoken`, etc.). Instead it spawns a subprocess:
+The plugin runs inside Calibre's embedded Python and cannot import `epub-translator` (which depends on `openai`, `tiktoken`, etc.). Instead it spawns a subprocess using a self-managed Python environment:
 
 ```
 Calibre plugin (Qt / Python 3.14)
+  │  auto-creates venv on first run
   │  subprocess.Popen
   ▼
-translate_worker.py  (.venv/bin/python)
+translate_worker.py  (managed venv Python)
   │  stdout: JSON-line protocol  {"type":"progress","value":0.45}
   ▼
 epub_translator library
 ```
 
-Progress is streamed back as JSON lines and displayed in a Qt progress bar.
+On first use the plugin locates a system Python 3.10+ (preferring 3.13/3.12/3.11), creates a venv at `<calibre-config>/plugins/epub_translate/venv/`, and installs `epub-translator` automatically. Progress is streamed back as JSON lines and displayed in a Qt progress bar.
 
 ## License
 

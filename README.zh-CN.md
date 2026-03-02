@@ -91,13 +91,12 @@ python translate_books.py
 
 ### 安装
 
-**前提：** 已完成 CLI 方式的安装步骤（需要 `.venv` 和 `config.json`）。
-
 **下载插件：**
 
 从 [Releases](https://github.com/byheaven/epub-translate/releases) 下载最新的 `EpubTranslate.zip`，或自行打包：
 
 ```bash
+cp translate_worker.py calibre-plugin/
 cd calibre-plugin
 zip -r ../EpubTranslate.zip . --exclude '*.DS_Store'
 cd ..
@@ -119,15 +118,17 @@ calibre-customize -a EpubTranslate.zip
 
 1. 在 Calibre 书库中选中一本或多本含 EPUB 格式的书
 2. 点击工具栏的 **Translate EPUB** 按钮
-3. 确认后开始翻译，进度实时显示
-4. 翻译完成后双语版自动加入书库（原书不受影响）
+3. 首次使用时，插件会自动安装 `epub-translator` 运行环境，约需一分钟，后续不再重复
+4. 确认后开始翻译，进度实时显示
+5. 翻译完成后双语版自动加入书库（原书不受影响）
 
 ### 插件配置
 
 点击 **Translate EPUB → Settings** 可配置：
-- `epub-translate` 项目路径（插件据此找到 `.venv` 和 `config.json`）
-- 目标语言、并发数、自定义提示词
-- 也可直接编辑项目目录下的 `config.json`
+
+- **API Settings** — API 密钥、地址、模型（必填项）
+- **Translation Settings** — 目标语言、并发数、自定义提示词
+- **Advanced** — 显示自动检测到的 Python 路径；**Reinstall** 按钮可重建运行环境；可选手动指定 Python 路径
 
 ---
 
@@ -157,19 +158,20 @@ epub-translate/
 
 ### Calibre 插件
 
-插件运行于 Calibre 内置 Python 环境，无法直接 import `epub-translator`（依赖 openai/tiktoken 等）。因此采用**子进程方案**：
+插件运行于 Calibre 内置 Python 环境，无法直接 import `epub-translator`（依赖 openai/tiktoken 等）。因此采用**子进程方案**，并自动管理独立的 Python 运行环境：
 
 ```
 Calibre 插件 (Qt/Python 3.14)
+  │  首次运行时自动创建 venv
   │  subprocess.Popen
   ▼
-translate_worker.py (.venv/bin/python)
+translate_worker.py（托管 venv 中的 Python）
   │  stdout: JSON 行协议 {"type":"progress","value":0.45}
   ▼
 epub_translator 库（实际翻译）
 ```
 
-进度通过 JSON 行实时回传，插件解析后更新 Qt 进度条。
+首次使用时，插件自动在系统中查找 Python 3.10+（优先选择 3.13/3.12/3.11），在 `<calibre配置目录>/plugins/epub_translate/venv/` 创建虚拟环境并安装 `epub-translator`。进度通过 JSON 行实时回传，插件解析后更新 Qt 进度条。
 
 ## License
 
