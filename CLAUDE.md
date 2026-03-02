@@ -34,11 +34,18 @@ The `calibre-plugin/` directory contains a Calibre InterfaceAction plugin.
 
 **Architecture:** The plugin runs inside Calibre's embedded Python and cannot import `epub-translator` directly. It spawns `translate_worker.py` as a subprocess and communicates via JSON lines on stdout.
 
+**Auto-setup:** On first use the plugin automatically finds a system Python 3.10+ (preferring 3.13/3.12/3.11 to avoid version-incompatible releases), creates a venv at `<calibre-config>/plugins/epub_translate/venv/`, and pip-installs `epub-translator`. No manual Python setup required.
+
 Key files:
-- `calibre-plugin/ui.py` — toolbar button, progress dialog, library integration
+- `calibre-plugin/ui.py` — toolbar button, progress dialog, `_SetupDialog` for first-run venv creation
 - `calibre-plugin/worker.py` — `QThread` wrapping `subprocess.Popen`
-- `calibre-plugin/config.py` — plugin settings panel (JSONConfig)
+- `calibre-plugin/config.py` — plugin settings panel (JSONConfig); helpers: `_get_venv_python()`, `_find_system_python()`, `setup_venv()`
 - `translate_worker.py` — standalone worker script invoked by the plugin
+
+**Plugin prefs** (stored at `<calibre-config>/plugins/epub_translate.json`):
+- `llm_key`, `llm_url`, `llm_model`, `llm_*` — LLM settings (always used directly)
+- `target_language`, `concurrency`, `user_prompt` — translation settings
+- `python_path` — optional manual override; empty = use auto-detected venv
 
 **Packaging:**
 ```bash

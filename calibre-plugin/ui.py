@@ -20,8 +20,11 @@ from qt.core import (
     QProgressBar,
     QPushButton,
     QTextEdit,
+    QThread,
+    QTimer,
     QVBoxLayout,
     Qt,
+    pyqtSignal,
 )
 
 from calibre_plugins.epub_translate.config import plugin_prefs
@@ -71,25 +74,27 @@ class EpubTranslateAction(InterfaceAction):
             return error_dialog(self.gui, "No books selected",
                                 "Please select at least one book with an EPUB format.", show=True)
 
-        db = self.gui.current_db
-        project_path = plugin_prefs["project_path"]
+        # Ensure Python environment is ready
+        from calibre_plugins.epub_translate.config import _get_venv_python
+        python_exe = _get_venv_python()
+        if not python_exe:
+            manual = plugin_prefs.get("python_path", "").strip()
+            if manual and Path(manual).exists():
+                python_exe = manual
+            else:
+                dlg = _SetupDialog(self.gui)
+                if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.was_successful():
+                    return
+                python_exe = _get_venv_python()
+                if not python_exe:
+                    return error_dialog(
+                        self.gui, "Setup failed",
+                        "Could not find a working Python after setup.\n\n"
+                        "Please open Settings > Advanced for details or set a manual override.",
+                        show=True,
+                    )
 
-        # Validate project path
-        python_exe = Path(project_path) / ".venv" / "bin" / "python"
-        worker_script = Path(project_path) / "translate_worker.py"
-        if not python_exe.exists():
-            return error_dialog(
-                self.gui, "Configuration error",
-                f"Python virtual environment not found: {python_exe}\n\n"
-                "Please set the correct epub-translate project path in the plugin settings.",
-                show=True,
-            )
-        if not worker_script.exists():
-            return error_dialog(
-                self.gui, "Configuration error",
-                f"translate_worker.py not found: {worker_script}",
-                show=True,
-            )
+        db = self.gui.current_db
 
         # Collect translation tasks
         tasks = []
@@ -128,7 +133,7 @@ class EpubTranslateAction(InterfaceAction):
                     os.remove(p)
             return
 
-        dlg = _ProgressDialog(self.gui, tasks, project_path, db)
+        dlg = _ProgressDialog(self.gui, tasks, db)
         dlg.exec()
 
     def show_settings(self):
@@ -173,15 +178,97 @@ def _get_plugin_icon(icon_name: str):
 
 # ------------------------------------------------------------------ #
 
+
+class _SetupThread(QThread):
+    """Background thread that runs setup_venv()."""
+    status_changed = pyqtSignal(str)
+    finished_signal = pyqtSignal(bool, str)   # success, error_message
+
+    def run(self):
+        from calibre_plugins.epub_translate.config import setup_venv
+        try:
+            setup_venv(on_status=lambda msg: self.status_changed.emit(msg))
+            self.finished_signal.emit(True, "")
+        except Exception as e:
+            self.finished_signal.emit(False, str(e))
+
+
+class _SetupDialog(QDialog):
+    """Modal progress dialog for first-time venv setup."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Setting Up epub-translator")
+        self.setMinimumWidth(440)
+        self._success = False
+        self._build_ui()
+        self._start_setup()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+
+        intro = QLabel(
+            "epub-translator is not installed yet.\n"
+            "Setting up a Python environment automatically — this only happens once."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        self.status_label = QLabel("Initializing...")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)   # indeterminate
+        layout.addWidget(self.progress_bar)
+
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.clicked.connect(self._on_cancel)
+        layout.addWidget(self.cancel_btn, alignment=Qt.AlignmentFlag.AlignRight)
+
+    def _start_setup(self):
+        self._thread = _SetupThread(self)
+        self._thread.status_changed.connect(self.status_label.setText)
+        self._thread.finished_signal.connect(self._on_finished)
+        self._thread.start()
+
+    def _on_finished(self, success: bool, error: str):
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(1)
+        if success:
+            self._success = True
+            self.status_label.setText("Setup complete!")
+            self.cancel_btn.setText("Close")
+            self.cancel_btn.clicked.disconnect()
+            self.cancel_btn.clicked.connect(self.accept)
+            QTimer.singleShot(800, self.accept)
+        else:
+            self.status_label.setText(f"Setup failed:\n{error}")
+            self.cancel_btn.setText("Close")
+            self.cancel_btn.clicked.disconnect()
+            self.cancel_btn.clicked.connect(self.reject)
+
+    def _on_cancel(self):
+        if hasattr(self, "_thread") and self._thread.isRunning():
+            self._thread.terminate()
+            self._thread.wait(2000)
+        self.reject()
+
+    def was_successful(self) -> bool:
+        return self._success
+
+
+# ------------------------------------------------------------------ #
+
+
 class _ProgressDialog(QDialog):
     """Modal progress dialog shown while books are being translated."""
 
-    def __init__(self, parent, tasks, project_path, db):
+    def __init__(self, parent, tasks, db):
         super().__init__(parent)
         self.setWindowTitle("Translating EPUB")
         self.setMinimumWidth(480)
         self.tasks = tasks
-        self.project_path = project_path
         self.db = db
         self._results = []  # [(book_id, success, msg)]
         self._build_ui()
@@ -209,7 +296,7 @@ class _ProgressDialog(QDialog):
         layout.addWidget(self.cancel_btn, alignment=Qt.AlignmentFlag.AlignRight)
 
     def _start_worker(self):
-        self.worker = TranslationWorker(self.tasks, self.project_path, parent=self)
+        self.worker = TranslationWorker(self.tasks, parent=self)
         self.worker.progress_changed.connect(self._on_progress)
         self.worker.status_changed.connect(self._on_status)
         self.worker.book_finished.connect(self._on_book_finished)
