@@ -49,9 +49,12 @@ Key files:
 
 **Packaging:**
 ```bash
+cp translate_worker.py calibre-plugin/
 cd calibre-plugin && zip -r ../EpubTranslate.zip . --exclude '*.DS_Store'
 /Applications/calibre.app/Contents/MacOS/calibre-customize -a ../EpubTranslate.zip
 ```
+
+Note: `translate_worker.py` must be copied into `calibre-plugin/` before zipping so that `get_resources("translate_worker.py")` can extract it at runtime. The copy is not committed to git (it lives in the project root).
 
 ## Configuration (`config.json`)
 

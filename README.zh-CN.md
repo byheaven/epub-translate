@@ -96,6 +96,7 @@ python translate_books.py
 从 [Releases](https://github.com/byheaven/epub-translate/releases) 下载最新的 `EpubTranslate.zip`，或自行打包：
 
 ```bash
+cp translate_worker.py calibre-plugin/
 cd calibre-plugin
 zip -r ../EpubTranslate.zip . --exclude '*.DS_Store'
 cd ..

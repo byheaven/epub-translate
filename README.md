@@ -95,6 +95,7 @@ Translate books directly from your Calibre library. The bilingual edition is add
 Download `EpubTranslate.zip` from [Releases](https://github.com/byheaven/epub-translate/releases), or build it yourself:
 
 ```bash
+cp translate_worker.py calibre-plugin/
 cd calibre-plugin
 zip -r ../EpubTranslate.zip . --exclude '*.DS_Store'
 cd ..

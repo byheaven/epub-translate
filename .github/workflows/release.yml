@@ -16,6 +16,7 @@ jobs:
 
       - name: Build plugin zip
         run: |
+          cp translate_worker.py calibre-plugin/
           cd calibre-plugin
           zip -r ../EpubTranslate.zip . --exclude '*.DS_Store' --exclude '__pycache__/*'
 
