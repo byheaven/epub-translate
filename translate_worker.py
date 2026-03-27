@@ -114,18 +114,60 @@ def build_llm(config: dict, base_dir: Path) -> LLM:
         cache_path=cache_dir,
         log_dir_path=log_dir,
     )
-    # Azure OpenAI requires a dedicated client; detect by URL
+    # Azure OpenAI: use plain OpenAI client with full deployment URL as base_url.
+    # This allows the "model" field to be the actual model name (e.g. gpt-5.4)
+    # rather than being forced to match the deployment name.
     if ".openai.azure.com" in c["url"]:
-        from openai import AzureOpenAI
+        from openai import OpenAI as _OpenAI
         parsed = urlparse(c["url"])
-        azure_endpoint = f"{parsed.scheme}://{parsed.netloc}"
-        api_version = parse_qs(parsed.query).get("api-version", ["2024-02-01"])[0]
-        llm._executor._client = AzureOpenAI(
+        base_path = parsed.path
+        for suffix in ("/chat/completions", "/completions"):
+            if base_path.endswith(suffix):
+                base_path = base_path[: -len(suffix)]
+                break
+        base_url = f"{parsed.scheme}://{parsed.netloc}{base_path}"
+        query_params = parse_qs(parsed.query)
+        # Pass api-version as default_query so it's appended to every request
+        default_query = {}
+        if "api-version" in query_params:
+            default_query["api-version"] = query_params["api-version"][0]
+        llm._executor._client = _OpenAI(
             api_key=c["key"],
-            azure_endpoint=azure_endpoint,
-            api_version=api_version,
+            base_url=base_url,
             timeout=c.get("timeout", 120.0),
+            default_query=default_query if default_query else None,
         )
+
+    # Patch _invoke_model to use max_completion_tokens instead of max_tokens
+    # for newer models (e.g. gpt-5.4) that reject the legacy parameter.
+    _orig_invoke = llm._executor._invoke_model
+    def _patched_invoke(input_messages, top_p, temperature, max_tokens):
+        from io import StringIO as _StringIO
+        from epub_translator.llm.types import MessageRole as _MR
+        msgs = []
+        for item in input_messages:
+            if item.role == _MR.SYSTEM:
+                msgs.append({"role": "system", "content": item.message})
+            elif item.role == _MR.USER:
+                msgs.append({"role": "user", "content": item.message})
+            elif item.role == _MR.ASSISTANT:
+                msgs.append({"role": "assistant", "content": item.message})
+        stream = llm._executor._client.chat.completions.create(
+            model=llm._executor._model_name,
+            messages=msgs,
+            stream=True,
+            stream_options={"include_usage": True},
+            top_p=top_p,
+            temperature=temperature,
+            max_completion_tokens=max_tokens,
+        )
+        buf = _StringIO()
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                buf.write(chunk.choices[0].delta.content)
+            llm._executor._statistics.submit_usage(chunk.usage)
+        return buf.getvalue()
+    llm._executor._invoke_model = _patched_invoke
     return llm
 
 
