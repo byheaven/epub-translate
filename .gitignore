@@ -9,8 +9,9 @@ logs/
 input/
 output/
 
-# 打包产物（用户自行打包）
+# Build artifacts
 EpubTranslate.zip
+calibre-plugin/translate_worker.py
 
 # 配置文件（含 API key，不入库）
 config.json
